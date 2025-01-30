@@ -1,4 +1,4 @@
-name: Build KernelSU Next
+name: Build KernelSU NEXT OKI
 on:
   workflow_dispatch:
     inputs:
