@@ -13,3 +13,8 @@
 
 [Laomai自动化构建](https://github.com/Laomaoi/Action-KernelSU-Next)
 
+
+修改日志：
+1.大幅度提高编译时间
+2.修改原版定位不到Image镜像的问题 使用动态定位
+3.加入注释 使代码简洁美观
