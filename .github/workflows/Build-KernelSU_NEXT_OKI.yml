@@ -127,3 +127,22 @@ jobs:
         # 复制镜像文件并显示路径
         cp -v "$IMAGE_PATH" AnyKernel3/
         echo "成功定位镜像文件：$IMAGE_PATH"
+
+
+
+        # 上传AnyKernel3刷机包
+     - name: Upload AnyKernel3
+       uses: actions/upload-artifact@v4
+       with:
+        # 添加明确的版本号和时间戳
+        name: AnyKernel3_${{ github.event.inputs.FEIL }}_$(date +%Y%m%d-%H%M)
+        path: ./AnyKernel3/*
+        # 保留7天构建产物
+        retention-days: 7
+
+        # 上传boot.img镜像
+     - name: Upload boot.img
+       uses: actions/upload-artifact@v4
+       with:
+        name: boot_${{ github.event.inputs.FEIL }}_$(date +%Y%m%d-%H%M)
+        path: kernel_workspace/kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-gki/dist/boot.img
