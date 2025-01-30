@@ -1,0 +1,129 @@
+name: Build KernelSU Next
+on:
+  workflow_dispatch:
+    inputs:
+      CPU:
+        description: "分支"
+        required: true
+        default: 'sm8650'
+      FEIL:
+        description: "配置文件"
+        required: true
+        default: 'oneplus_ace3_pro_v'
+      CPUD:
+        description: "处理器代号"
+        required: true
+        default: 'pineapple'
+
+jobs:
+  build:
+   runs-on: ubuntu-latest
+
+   steps:
+     # 添加仓库缓存加速后续构建流程
+     - name: Cache repo sources
+       uses: actions/cache@v3
+       with:
+        path: kernel_workspace
+        key: ${{ runner.os }}-repo-${{ github.event.inputs.CPU }}-${{ github.event.inputs.FEIL }}
+
+     # 检出仓库代码
+     - name: Check Out
+       uses: actions/checkout@v3
+
+     # 合并清理步骤并优化磁盘管理
+     
+     - name: Cleanup
+       run: |
+        sudo apt-get clean
+        sudo rm -rf /var/lib/apt/lists/*
+        df -h
+#####
+     # 设置Git用户信息
+     - name: Configure Git
+       run: |
+        # 强制设置用户名和邮箱
+        
+        git config --global user.name "Mifengtong"
+        git config --global user.email "3335310963@qq.com"
+        git config --global credential.helper store  # 保存凭证
+
+     # 合并依赖安装并添加编译加速工具
+     
+     - name: Install dependencies
+       run: |
+        sudo apt update -y
+        # 安装核心编译工具链
+        sudo apt install -y python3 git curl ccache libncurses-dev
+        # 设置Python3默认环境
+        sudo ln -sf /usr/bin/python3 /usr/bin/python
+        # 配置ccache缓存
+        sudo ccache --max-size=2G
+
+     # 安装repo工具
+     - name: Install repo tool
+       run: |
+        curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
+        chmod a+x ~/repo
+        sudo mv ~/repo /usr/local/bin/repo
+
+     # 关键路径预创建机制（解决目录不存在问题）
+     - name: Initialize repo and sync
+       run: |
+        # 预创建输出目录
+        mkdir -p kernel_workspace/kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-gki/dist/
+        
+        cd kernel_workspace
+        # 使用优化参数初始化仓库
+        repo init -u https://github.com/OnePlusOSS/kernel_manifest.git \
+          -b refs/heads/oneplus/${{ github.event.inputs.CPU }} \
+          -m ${{ github.event.inputs.FEIL }}.xml \
+          --depth=1 \
+          --no-clone-bundle  # 禁用冗余数据下载
+        
+        # 并行同步代码
+        repo sync -j$(nproc) --no-clone-bundle
+        
+        # 再次确保关键目录存在
+        mkdir -p kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-gki/dist/
+        
+        # 清理保护性导出文件
+        rm kernel_platform/common/android/abi_gki_protected_exports_* || true
+        
+        # 修改内核版本标识
+        sed -i 's|^echo "\$res"$|echo "-OKI-EdogawaX"|' kernel_platform/common/scripts/setlocalversion
+
+     # 编译验证
+     - name: Verify kernel build
+       run: |
+        cd kernel_workspace
+        # 执行官方编译脚本
+        ./kernel_platform/oplus/build/oplus_build_kernel.sh ${{ github.event.inputs.CPUD }} gki
+        
+        # 严格检查编译IMAGINE
+        if [ ! -f kernel_platform/out/msm-kernel-${{ github.event.inputs.CPUD }}-gki/dist/Image ]; then
+          echo "::error::构建失败 - 未找到内核镜像文件！"
+          echo "可能原因：1. 分支配置错误 2. 依赖缺失 3. 编译脚本异常"
+          exit 1
+        fi
+
+     # 文件定位
+     - name: Make AnyKernel3
+       run: |
+        # 清理旧打包目录
+        [ -d AnyKernel3 ] && rm -rf AnyKernel3
+        
+        # 克隆最新打包工具
+        git clone https://github.com/Kernel-SU/AnyKernel3 --depth=1
+        
+        # 动态查找内核镜像文件
+        IMAGE_PATH=$(find kernel_workspace -name Image -print -quit)
+        if [[ ! -f "$IMAGE_PATH" ]]; then
+          echo "::error::错误：未找到内核镜像文件"
+          echo "搜索路径：$(pwd)/kernel_workspace"
+          exit 1
+        fi
+        
+        # 复制镜像文件并显示路径
+        cp -v "$IMAGE_PATH" AnyKernel3/
+        echo "成功定位镜像文件：$IMAGE_PATH"
